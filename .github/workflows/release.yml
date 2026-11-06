@@ -1,0 +1,115 @@
+name: Release
+
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+      name: Create GitHub Release
+      runs-on: ubuntu-latest
+
+      steps:
+        - name: create release
+          uses: softprops/action-gh-release@v3
+          with:
+            tag_name: ${{ github.ref_name }}
+            name: ${{ github.ref_name }}
+            token: ${{ github.token }}
+            generate_release_notes: true
+
+  linux-build:
+    name: Linux Build (Debug, Release)
+    runs-on: ubuntu-latest
+    needs: release
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust target
+        run: rustup target add x86_64-unknown-linux-gnu
+
+      - name: Build Release (x86_64)
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Build Debug (x86_64)
+        run: cargo build --target x86_64-unknown-linux-gnu --bin stcli
+
+      - name: Rename Linux binaries
+        run: |
+          mv target/x86_64-unknown-linux-gnu/release/stcli \
+             stcli-x86_64-unknown-linux-gnu
+          mv target/x86_64-unknown-linux-gnu/debug/stcli \
+             stcli-x86_64-unknown-linux-gnu_debug
+
+      - name: Upload Linux Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            stcli-x86_64-unknown-linux-gnu
+            stcli-x86_64-unknown-linux-gnu_debug
+
+  windows-build:
+    name: Windows Build (Debug, Release)
+    runs-on: windows-latest
+    needs: release
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build Release (x64)
+        run: cargo build --release
+
+      - name: Build Debug (x64)
+        run: cargo build --bin stcli
+
+      - name: Install 32-bit Rust target
+        run: rustup target add i686-pc-windows-msvc
+      
+      - name: Build Release (x86)
+        run: cargo build --release --target i686-pc-windows-msvc
+
+      - name: Build Debug (x86)
+        run: cargo build --target i686-pc-windows-msvc --bin stcli
+      
+      - name: Restore Cert
+        shell: powershell
+        run: |
+          [IO.File]::WriteAllBytes(
+            "codesign.pfx",
+            [Convert]::FromBase64String("${{ secrets.WIN_CERT_PFX_BASE64 }}")
+          )
+      
+      - name: Sign exe
+        shell: powershell
+        run: |
+          & "C:\Program Files (x86)\Microsoft SDKs\ClickOnce\SignTool\signtool.exe" sign /f codesign.pfx /p "${{ secrets.WIN_CERT_PASSWORD }}" /fd SHA256 /t "http://timestamp.digicert.com" target\release\stcli.exe
+          & "C:\Program Files (x86)\Microsoft SDKs\ClickOnce\SignTool\signtool.exe" sign /f codesign.pfx /p "${{ secrets.WIN_CERT_PASSWORD }}" /fd SHA256 /t "http://timestamp.digicert.com" target\i686-pc-windows-msvc\release\stcli.exe
+      
+      - name: Renaming Windows files
+        shell: powershell
+        run: |
+          Move-Item target\release\stcli.exe stcli-x86_64-pc-windows-msvc.exe
+          Move-Item target\debug\stcli.exe stcli-x86_64-pc-windows-msvc_debug.exe
+          Move-Item target\i686-pc-windows-msvc\release\stcli.exe stcli-x86-pc-windows-msvc.exe
+          Move-Item target\i686-pc-windows-msvc\debug\stcli.exe stcli-x86-pc-windows-msvc_debug.exe
+
+      - name: Upload Windows Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            stcli-x86_64-pc-windows-msvc_debug.exe
+            stcli-x86_64-pc-windows-msvc.exe
+            stcli-x86-pc-windows-msvc_debug.exe
+            stcli-x86-pc-windows-msvc.exe
+      
+      - name: Cleanup
+        run: del codesign.pfx
+

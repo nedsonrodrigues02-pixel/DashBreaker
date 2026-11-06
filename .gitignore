@@ -1,0 +1,26 @@
+# --- Arquivos de compilação do Rust ---
+/target
+**/*.rs.bk
+*.pdb
+*.d
+
+# --- Arquivos do projeto original ---
+/icons
+/build
+ctest.py
+/venv
+steam.bin
+/MelonLoader
+/mods
+/plugins
+/benches
+.env
+steamtools.log
+*.lua
+conf.toml
+docs
+
+# --- Arquivos de sistema e logs ---
+.DS_Store
+Thumbs.db
+*.log
